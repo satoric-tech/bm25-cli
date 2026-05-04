@@ -1,0 +1,37 @@
+[package]
+name = "bm25-cli"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Fast BM25 full-text search CLI over local files. Zero config, auto-indexed, gitignore-aware."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/satoric-tech/bm25-cli"
+keywords = ["search", "bm25", "full-text-search", "cli", "tantivy"]
+categories = ["command-line-utilities", "text-processing"]
+
+[[bin]]
+name = "bm25"
+path = "src/main.rs"
+
+[lib]
+name = "bm25_cli"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+tantivy = "0.26"
+glob = "0.3"
+ignore = "0.4"
+rayon = "1"
+encoding_rs = "0.8"
+chardetng = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "deny"
