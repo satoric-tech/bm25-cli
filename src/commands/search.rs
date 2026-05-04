@@ -9,7 +9,9 @@ use tantivy::schema::Value;
 use tantivy::snippet::SnippetGenerator;
 use tantivy::{Executor, TantivyDocument, Term};
 
-use bm25_cli::indexer::{canonicalize_source, glob_base_dir, is_glob, num_cpus, IndexOptions, Indexer};
+use bm25_cli::indexer::{
+    canonicalize_source, glob_base_dir, is_glob, num_cpus, IndexOptions, Indexer,
+};
 use bm25_cli::sources;
 
 type SourceFilter = Box<dyn Fn(&str) -> bool + Send + Sync>;

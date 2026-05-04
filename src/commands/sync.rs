@@ -5,7 +5,9 @@ use tantivy::collector::Count;
 use tantivy::query::RangeQuery;
 use tantivy::Term;
 
-use bm25_cli::indexer::{canonicalize_source, glob_base_dir, is_glob, num_cpus, IndexOptions, Indexer};
+use bm25_cli::indexer::{
+    canonicalize_source, glob_base_dir, is_glob, num_cpus, IndexOptions, Indexer,
+};
 use bm25_cli::sources;
 
 pub fn run(
@@ -70,9 +72,9 @@ pub fn run(
                         uri.clone()
                     };
                     let covered = !is_glob(uri)
-                        && registered.iter().any(|s| {
-                            std::path::PathBuf::from(&reg_uri).starts_with(&s.uri)
-                        });
+                        && registered
+                            .iter()
+                            .any(|s| std::path::PathBuf::from(&reg_uri).starts_with(&s.uri));
                     if !covered {
                         registered.retain(|s| s.uri != reg_uri);
                         registered.push(sources::Source {
