@@ -1,4 +1,2 @@
-pub mod list;
-pub mod remove;
-pub mod search;
-pub mod sync;
+pub mod dir;
+pub mod stdin;
