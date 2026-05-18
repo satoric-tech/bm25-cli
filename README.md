@@ -1,127 +1,146 @@
-# BM25 CLI
+# bm25
 
 [![CI](https://github.com/satoric-tech/bm25-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/satoric-tech/bm25-cli/actions/workflows/ci.yml) [![crates.io](https://img.shields.io/crates/v/bm25-cli.svg)](https://crates.io/crates/bm25-cli) [![License](https://img.shields.io/badge/license-MIT-007ec6?style=flat-square)](LICENSE)
 
-Fast BM25 full-text search over local files. Zero config, auto-indexed, gitignore-aware.
+BM25 search over stdin, a file, a directory, or a URL. No index, no config.
 
 ---
 
-## Installation
+## Install
 
-```console
-$ curl -fsSL https://raw.githubusercontent.com/satoric-tech/bm25-cli/main/install.sh | sh
+```sh
+curl -fsSL https://raw.githubusercontent.com/satoric-tech/bm25-cli/main/install.sh | sh
 ```
 
 Or via cargo:
 
-```console
-$ cargo install bm25-cli
+```sh
+cargo install bm25-cli
 ```
 
 ---
 
-## Commands
+## Usage
 
-### `bm25 <query> [paths...] [options]`
+**Pipe text** — ranks paragraphs by relevance:
 
-Search one or more local paths or globs.
-
-```console
-$ bm25 "auth error handling" ./src              # directory
-$ bm25 "schema data" "**/*.md" --context 300    # glob
-$ bm25 "payment status" ./src ./docs            # multiple paths
+```sh
+cat notes.txt | bm25 "deployment rollback"
+curl https://example.com/page | bm25 "query" --html
 ```
 
-**Options**
+**File** — same as pipe, but pass the path directly:
+
+```sh
+bm25 "authentication error" ./docs/api.md
+```
+
+**Directory** — walks files, returns ranked file paths:
+
+```sh
+bm25 "payment handler" ./src
+bm25 "auth middleware" ./src --no-ignore
+```
+
+**URL** — fetches the page, extracts article content, ranks paragraphs:
+
+```sh
+bm25 "default timeout" https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html
+```
+
+---
+
+## Options
+
+### Arguments
+
+| Argument | Description |
+|---|---|
+| `QUERY` | Search query (Lucene syntax supported) |
+| `URI` | File path, directory, or URL to search |
+
+### Search
 
 | Flag | Description | Default |
-|------|-------------|---------|
-| `--force` | Re-index the given sources | off |
-| `--score` | Show relevance scores | off |
-| `--json` | Output as JSON lines `{path, score, context?}` | off |
-| `--no-ignore` | Do not respect `.gitignore` / `.ignore` rules | off |
-| `--pagerank` | Re-rank results using Personalized PageRank (import graph) | off |
-| `-l, --limit <N>` | Maximum number of results | `25` |
-| `-c, --context <CHARS>` | Show a highlighted excerpt around matches | off |
-| `-f, --fuzzy <DISTANCE>` | Fuzzy match at edit distance 1 or 2 | off |
-| `-s, --since <WHEN>` | Only files modified within window (`7d`, `2w`, `2024-01-01`) | off |
-| `-m, --max-filesize <SIZE>` | Skip files larger than this (`1M`, `500K`, `2G`) | off |
-| `-j, --jobs <N>` | Number of threads (-1 for all CPUs) | `-1` |
+|---|---|---|
+| `--tokenizer NAME` | Tokenizer to use: `simple`, `whitespace`, `raw` | `simple` |
+| `--filter FILTER,...` | Filters to apply: `stem`, `ascii-fold`, `remove-long` | none |
+| `--lang LANG` | Stemmer language, used with `--filter stem` | none |
 
-> **Note**: Paths are indexed on first query and re-indexed automatically on subsequent queries.
+### Chunking
 
----
-
-### `bm25 sync`
-
-Index sources for the first time or re-index existing ones.
-
-```console
-$ bm25 sync ./src
-$ bm25 sync ./src ./docs
-$ bm25 sync --all
-```
-
-**Options**
+Applies to stdin, file, and URL modes only.
 
 | Flag | Description | Default |
-|------|-------------|---------|
-| `--all` | Re-index all registered sources | off |
-| `--no-ignore` | Do not respect `.gitignore` / `.ignore` rules | off |
-| `-m, --max-filesize <SIZE>` | Skip files larger than this (`1M`, `500K`, `2G`) | off |
-| `-j, --jobs <N>` | Number of threads (-1 for all CPUs) | `-1` |
+|---|---|---|
+| `--min N` | Skip chunks shorter than N chars | `64` |
+| `--max N` | Re-split on `\n` if a chunk exceeds N chars | `2048` |
+
+### Input
+
+| Flag | Description |
+|---|---|
+| `--html` | Treat piped stdin as HTML — extract article before searching |
+| `--no-ignore` | Ignore `.gitignore` / `.ignore` rules (directory mode only) |
+
+### Output
+
+| Flag | Description | Default |
+|---|---|---|
+| `-m, --max-count N` | Stop after N results | `25` |
+| `--json` | Output as JSON lines — `{"score":…,"text":…}` or `{"score":…,"path":…}` | off |
 
 ---
 
-### `bm25 list`
+## Tokenizers
 
-List all registered sources and when they were last indexed.
+| Name | Splits on |
+|---|---|
+| `simple` (default) | Non-alphanumeric characters |
+| `whitespace` | Whitespace only |
+| `raw` | No splitting — whole input as one token |
 
-```console
-$ bm25 list
-/home/user/project/src
-  42 docs
-  added 5 days ago
-  last synced just now
+---
+
+## Filters
+
+Filters are applied in canonical order: `lowercase` (always) → `ascii-fold` → `remove-long` → `stem`.
+
+| Filter | Description |
+|---|---|
+| `stem` | Language stemmer via Snowball — use with `--lang` |
+| `ascii-fold` | Fold unicode to ASCII: `é→e`, `ü→u`, etc. |
+| `remove-long` | Drop tokens longer than 40 chars |
+
+Examples:
+
+```sh
+bm25 "authentication" ./src --filter stem --lang english
+bm25 "café résumé" ./docs --filter stem,ascii-fold --lang french
+bm25 "UUID" ./src --filter remove-long
 ```
 
 ---
 
-### `bm25 remove <path>`
+## Languages
 
-Remove a source and purge all its documents from the index.
+Used with `--filter stem --lang LANG`:
 
-```console
-$ bm25 remove /home/user/project/src
-```
-
----
-
-## Sources
-
-Sources are registered and stored in `~/.bm25/`.
-
-| Format | Example | Notes |
-|--------|---------|-------|
-| Directory | `.`, `./src`, `/home/user/project` | Respects `.gitignore`. Skips binaries. Non-UTF-8 files transcoded transparently. |
-| Glob | `"**/*.md"`, `"src/**/*.py"` | Same file rules as directory. |
+`arabic` `danish` `dutch` `english` `finnish` `french` `german` `greek` `hungarian` `italian` `norwegian` `portuguese` `romanian` `russian` `spanish` `swedish` `tamil` `turkish`
 
 ---
 
 ## Query syntax
 
 | Syntax | Meaning |
-|--------|---------|
-| `payment invoice` | Either term (OR) |
-| `+payment +invoice` | Both terms required (AND) |
-| `payment AND invoice` | Both terms required |
-| `payment OR invoice` | Either term (explicit) |
+|---|---|
+| `payment invoice` | Either term |
+| `+payment +invoice` | Both required |
 | `payment -invoice` | payment but not invoice |
-| `"payment handling"` | Exact phrase |
-| `"payment handling"~2` | Phrase with slop (terms within 2 positions) |
+| `"payment handler"` | Exact phrase |
+| `"payment handler"~2` | Phrase with slop |
 | `pay*` | Prefix match |
-| `payment^2.0 invoice^0.4` | Boost term relevance |
-| `*` | Match all documents |
+| `payment^2 invoice^0.5` | Boost term weight |
 
 ---
 
