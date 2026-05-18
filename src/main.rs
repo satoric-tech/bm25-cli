@@ -1,44 +1,93 @@
 mod args;
 mod commands;
+mod html;
 
 use anyhow::Result;
-use args::{Cli, Command};
+use args::Cli;
+use bm25_cli::tokenizer::{parse_filter, parse_lang};
 use clap::Parser;
+use std::io::{IsTerminal, Read};
+use std::path::Path;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    match cli.command {
-        Some(Command::Remove { source }) => commands::remove::run(source),
-        Some(Command::Sync {
-            sources,
-            all,
-            no_ignore,
-            max_filesize,
-            jobs,
-        }) => commands::sync::run(sources, all, no_ignore, max_filesize, jobs),
-        Some(Command::List) => commands::list::run(),
-        None => {
-            let Some(query) = cli.query else {
-                use clap::CommandFactory;
-                Cli::command().print_help()?;
-                println!();
-                return Ok(());
-            };
-            commands::search::run(commands::search::RunArgs {
-                query,
-                paths: cli.paths,
-                all: cli.all,
+
+    let filters: Vec<_> = cli
+        .filter
+        .iter()
+        .filter_map(|s| parse_filter(s))
+        .collect();
+    let lang = cli.lang.as_deref().and_then(parse_lang);
+
+    if let Some(ref target) = cli.path_or_url {
+        if target.starts_with("http://") || target.starts_with("https://") {
+            let input = html::fetch_and_convert(target)?;
+            return commands::stdin::run(commands::stdin::RunArgs {
+                query: cli.query,
+                input,
                 limit: cli.limit,
-                show_score: cli.score,
-                context_chars: cli.context,
                 json: cli.json,
-                fuzzy: cli.fuzzy,
-                since: cli.since,
-                max_filesize: cli.max_filesize,
-                no_ignore: cli.no_ignore,
-                jobs: cli.jobs,
-                force: cli.force,
-            })
+                tokenizer: cli.tokenizer,
+                filters,
+                lang,
+                min_chunk: cli.min,
+                max_chunk: cli.max,
+            });
         }
+
+        let path = Path::new(target);
+        if path.is_dir() {
+            return commands::dir::run(commands::dir::RunArgs {
+                query: cli.query,
+                path: path.to_path_buf(),
+                limit: cli.limit,
+                no_ignore: cli.no_ignore,
+                json: cli.json,
+                tokenizer: cli.tokenizer,
+                filters,
+                lang,
+            });
+        }
+
+        let input = std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("failed to read '{target}': {e}"))?;
+        return commands::stdin::run(commands::stdin::RunArgs {
+            query: cli.query,
+            input,
+            limit: cli.limit,
+            json: cli.json,
+            tokenizer: cli.tokenizer,
+            filters,
+            lang,
+            min_chunk: cli.min,
+            max_chunk: cli.max,
+        });
     }
+
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        use clap::CommandFactory;
+        Cli::command().print_help()?;
+        println!();
+        return Ok(());
+    }
+    let mut s = String::new();
+    stdin.lock().read_to_string(&mut s)?;
+    let input = if cli.html {
+        html::convert(&s, "https://example.com")?
+    } else {
+        s
+    };
+
+    commands::stdin::run(commands::stdin::RunArgs {
+        query: cli.query,
+        input,
+        limit: cli.limit,
+        json: cli.json,
+        tokenizer: cli.tokenizer,
+        filters,
+        lang,
+        min_chunk: cli.min,
+        max_chunk: cli.max,
+    })
 }
